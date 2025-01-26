@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// Custom rust repository.
-const RUST_REPO: &str = "https://github.com/wasix-org/rust.git";
+const RUST_REPO: &str = "https://github.com/{contributor}/rust.git";
 /// Branch to use in the custom Rust repo.
 const RUST_BRANCH: &str = "wasix";
 
@@ -391,7 +391,9 @@ fn build_rust(
     ensure_libc_dir_valid(&libc_dir)?;
 
     if update_repo {
-        prepare_git_repo(RUST_REPO, git_tag, &rust_dir, true)?;
+        let repo_url =
+            RUST_REPO.replace("{contributor}", &ToolchainContributor::WasixOrg.to_string());
+        prepare_git_repo(&repo_url, git_tag, &rust_dir, true)?;
     }
 
     let sysroot32 = libc_dir.join("sysroot32");
@@ -562,11 +564,37 @@ impl ToolchainSpec {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolchainContributor {
+    WasixOrg,
+    Fork(String),
+}
+
+impl Display for ToolchainContributor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolchainContributor::WasixOrg => write!(f, "wasix-org"),
+            ToolchainContributor::Fork(c) => write!(f, "{c}"),
+        }
+    }
+}
+
+impl From<String> for ToolchainContributor {
+    fn from(contributor: String) -> Self {
+        if contributor == "wasix-org" {
+            ToolchainContributor::WasixOrg
+        } else {
+            ToolchainContributor::Fork(contributor)
+        }
+    }
+}
+
 /// Download a pre-built toolchain from Github releases.
 fn download_toolchain(
     target: &str,
     toolchains_root_dir: &Path,
     toolchain_spec: ToolchainSpec,
+    toolchain_contributor: ToolchainContributor,
 ) -> Result<PathBuf, anyhow::Error> {
     let mut headers = HeaderMap::new();
 
@@ -586,7 +614,12 @@ fn download_toolchain(
         .user_agent("cargo-wasix")
         .build()?;
 
-    let repo = RUST_REPO
+    let contributor = match toolchain_contributor {
+        ToolchainContributor::WasixOrg => "wasix-org".to_string(),
+        ToolchainContributor::Fork(user) => user,
+    };
+    let replaced_repo = RUST_REPO.replace("{contributor}", &contributor);
+    let repo = replaced_repo
         .trim_start_matches("https://github.com/")
         .trim_end_matches(".git");
 
@@ -718,9 +751,10 @@ fn download_toolchain(
 pub fn install_prebuilt_toolchain(
     toolchain_dir: &Path,
     toolchain_spec: ToolchainSpec,
+    toolchain_contributor: ToolchainContributor,
 ) -> Result<RustupToolchain, anyhow::Error> {
     if let Some(target) = guess_host_target() {
-        match download_toolchain(target, toolchain_dir, toolchain_spec) {
+        match download_toolchain(target, toolchain_dir, toolchain_spec, toolchain_contributor) {
             Ok(path) => RustupToolchain::link(RUSTUP_TOOLCHAIN_NAME, &path.join("rust")),
             Err(err) => {
                 eprintln!("Could not download pre-built toolchain: {err:?}");
@@ -850,7 +884,11 @@ pub fn ensure_toolchain(config: &Config, is64bit: bool) -> Result<RustupToolchai
     let toolchain = if let Some(chain) = RustupToolchain::find_by_name(RUSTUP_TOOLCHAIN_NAME)? {
         chain
     } else if !config.is_offline {
-        install_prebuilt_toolchain(&Config::toolchain_dir()?, ToolchainSpec::Latest)?
+        install_prebuilt_toolchain(
+            &Config::toolchain_dir()?,
+            ToolchainSpec::Latest,
+            ToolchainContributor::WasixOrg,
+        )?
     } else {
         bail!(
             r#"

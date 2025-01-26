@@ -185,8 +185,17 @@ fn rmain(config: &mut Config) -> Result<()> {
                 .cloned()
                 .map(|v| v.into_string().unwrap().into())
                 .unwrap_or(toolchain::ToolchainSpec::Latest);
+            let contributor = args
+                .get(1)
+                .cloned()
+                .map(|v| v.into_string().unwrap().into())
+                .unwrap_or(toolchain::ToolchainContributor::WasixOrg);
             let _lock = Config::acquire_lock()?;
-            let chain = toolchain::install_prebuilt_toolchain(&Config::toolchain_dir()?, version)?;
+            let chain = toolchain::install_prebuilt_toolchain(
+                &Config::toolchain_dir()?,
+                version,
+                contributor,
+            )?;
             config.info(&format!(
                 "Toolchain {} downloaded and installed to path {}.\nThe wasix toolchain is now ready to use.",
                 chain.name,
