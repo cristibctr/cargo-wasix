@@ -61,6 +61,7 @@ fn rmain(config: &mut Config) -> Result<()> {
 
     // skip the current executable and the `wasix` inserted by Cargo
     let mut is64bit = false;
+    let mut isp2 = false;
     let mut no_message_format = false;
     let mut args = env::args_os().skip(2);
     let subcommand = args.next().and_then(|s| s.into_string().ok());
@@ -68,6 +69,10 @@ fn rmain(config: &mut Config) -> Result<()> {
         Some("build") => Subcommand::Build,
         Some("build64") => {
             is64bit = true;
+            Subcommand::Build
+        }
+        Some("buildp2") => {
+            isp2 = true;
             Subcommand::Build
         }
         Some("build-toolchain") => Subcommand::BuildToolchain,
@@ -132,6 +137,8 @@ fn rmain(config: &mut Config) -> Result<()> {
     // passing them ourselves.
     let target = if is64bit {
         "wasm64-wasmer-wasi"
+    } else if isp2 {
+        "wasm32-wasip2"
     } else {
         "wasm32-wasmer-wasi"
     };
@@ -178,18 +185,18 @@ fn rmain(config: &mut Config) -> Result<()> {
         .unwrap_or_else(|_| ("wasmer".to_string(), true));
 
     let mut check_deps = false;
+    let contributor = args
+        .get(1)
+        .cloned()
+        .map(|v| v.into_string().unwrap().into())
+        .unwrap_or(toolchain::ToolchainContributor::WasixOrg);
+    let version = args
+        .first()
+        .cloned()
+        .map(|v| v.into_string().unwrap().into())
+        .unwrap_or(toolchain::ToolchainSpec::Latest);
     match subcommand {
         Subcommand::DownloadToolchain => {
-            let version = args
-                .first()
-                .cloned()
-                .map(|v| v.into_string().unwrap().into())
-                .unwrap_or(toolchain::ToolchainSpec::Latest);
-            let contributor = args
-                .get(1)
-                .cloned()
-                .map(|v| v.into_string().unwrap().into())
-                .unwrap_or(toolchain::ToolchainContributor::WasixOrg);
             let _lock = Config::acquire_lock()?;
             let chain = toolchain::install_prebuilt_toolchain(
                 &Config::toolchain_dir()?,
@@ -245,7 +252,7 @@ fn rmain(config: &mut Config) -> Result<()> {
     } else {
         None
     };
-    let toolchain = toolchain::ensure_toolchain(config, is64bit)?;
+    let toolchain = toolchain::ensure_toolchain(config, is64bit, contributor, version)?;
 
     std::env::set_var("RUSTUP_TOOLCHAIN", &toolchain.name);
 

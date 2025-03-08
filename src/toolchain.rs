@@ -14,10 +14,7 @@ use std::{
 use anyhow::{bail, Context};
 use reqwest::header::HeaderMap;
 
-use crate::{
-    config::Config,
-    utils::{ensure_binary, CommandExt},
-};
+use crate::{config::Config, toolchain, utils::{ensure_binary, CommandExt}};
 
 /// Custom rust repository.
 const RUST_REPO: &str = "https://github.com/{contributor}/rust.git";
@@ -415,7 +412,7 @@ change-id = 125535
 download-ci-llvm = false
 
 [build]
-target = ["wasm32-wasmer-wasi", "wasm64-wasmer-wasi"]
+target = ["wasm32-wasmer-wasi", "wasm64-wasmer-wasi", "wasm32-wasip2"]
 extended = true
 tools = [ "clippy", "rustfmt" ]
 configure-args = []
@@ -425,6 +422,9 @@ lld = true
 llvm-tools = true
 
 [target.wasm32-wasmer-wasi]
+wasi-root = "{sysroot32}"
+
+[target.wasm32-wasip2]
 wasi-root = "{sysroot32}"
 
 [target.wasm64-wasmer-wasi]
@@ -878,7 +878,7 @@ impl RustupToolchain {
 /// Also checks that the toolchain is correctly installed.
 ///
 /// Returns the path to the toolchain.
-pub fn ensure_toolchain(config: &Config, is64bit: bool) -> Result<RustupToolchain, anyhow::Error> {
+pub fn ensure_toolchain(config: &Config, is64bit: bool, contributor: ToolchainContributor, version: ToolchainSpec) -> Result<RustupToolchain, anyhow::Error> {
     let _lock = Config::acquire_lock()?;
 
     let toolchain = if let Some(chain) = RustupToolchain::find_by_name(RUSTUP_TOOLCHAIN_NAME)? {
@@ -886,8 +886,8 @@ pub fn ensure_toolchain(config: &Config, is64bit: bool) -> Result<RustupToolchai
     } else if !config.is_offline {
         install_prebuilt_toolchain(
             &Config::toolchain_dir()?,
-            ToolchainSpec::Latest,
-            ToolchainContributor::WasixOrg,
+            version,
+            contributor,
         )?
     } else {
         bail!(
